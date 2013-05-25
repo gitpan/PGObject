@@ -1,0 +1,8 @@
+Revision history for PGObject
+
+1.00    Date/time
+        First version, released on an unsuspecting world.
+        Differences from LedgerSMB's interface include:
+           1.  Function information is modularized into its own api
+           2.  windowed aggs with rows unbounded preceding are supported
+           3.  Database handle management outside scope of this module
