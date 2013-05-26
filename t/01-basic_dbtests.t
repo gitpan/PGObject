@@ -4,8 +4,9 @@ use PGObject;
 
 
 # Initial setup
-my $dbh1 = DBI->connect('dbi:Pg:', 'postgres') 
-    || plan skip_all => 'Needs superuser connection for this test script' && exit 0;
+my $dbh1 = DBI->connect('dbi:Pg:', 'postgres') ;
+
+plan skip_all => 'Needs superuser connection for this test script' unless $dbh1;
 
 plan tests => 32;
 

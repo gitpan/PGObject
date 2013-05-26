@@ -1,5 +1,10 @@
 Revision history for PGObject
 
+1.01    2013-05-25
+        1. Minor changes to test cases to let them finish cleanly when the db is
+           not available.
+        2. Minor documentation changes.
+        
 1.00    Date/time
         First version, released on an unsuspecting world.
         Differences from LedgerSMB's interface include:

@@ -15,7 +15,7 @@ Version 1.0
 
 =cut
 
-our $VERSION = 1.0000;
+our $VERSION = 1.01;
 
 =head1 SYNPOSIS
 
@@ -335,6 +335,13 @@ returned, it must follow the type format:
   cast  => db cast type
   value => literal representation of type, as intelligible by DBD::Pg
 
+=head2 TODO FOR TYPE INTERFACE
+
+The above interface will only be fully functional when a registration interface
+is provided.  This is planned for 1.1.  A registration interface would allow
+PGObject to create new objects based on database element return type.  Until
+then this must be done on the application level.
+
 =head1 WRITING TOP-HALF OBJECT FRAMEWORKS FOR PGOBJECT
 
 PGObject is intended to be the database-facing side of a framework for objects.
@@ -419,7 +426,7 @@ not be half of what it is today.
 
 =item PGObject::Simple - Simple mapping of object properties to stored proc args
 
-=item PGObject::Simple::Moose - Moose-enabled wrapper for PGObject::Simple
+=item PGObject::Simple::Role - Moose-enabled wrapper for PGObject::Simple
 
 =back
 
