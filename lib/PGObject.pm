@@ -1,6 +1,6 @@
 =head1 NAME
 
-PGObject - Base class for PG Object subclasses
+PGObject - A toolkit integrating intelligent PostgreSQL dbs into Perl objects
 
 =cut
 
@@ -11,11 +11,15 @@ use Carp;
 
 =head1 VERSION
 
-Version 1.0
+Version 1.1
 
 =cut
 
-our $VERSION = 1.01;
+our $VERSION = 1.10;
+
+my %typeregistry = (
+    default => {},
+);
 
 =head1 SYNPOSIS
 
@@ -34,6 +38,7 @@ To get info about a function, filtered by first argument type
       dbh        =>  $dbh,
       funcname   =>  $funcname,
       funcschema =>  'public',
+      funcprefix =>  'test__',
       objtype    =>  'invoice',
       objschema  =>  'public',
   );
@@ -43,6 +48,7 @@ To call a function with enumerated arguments
   my @results = PGObject->call_procedure(
       dbh          =>  $dbh,
       funcname     => $funcname,
+      funcprefix =>  'test__',
       funcschema   => $funcname,
       args         => [$arg1, $arg2, $arg3],
   );
@@ -76,9 +82,9 @@ idea that wrapper classes would be written to implement this.
 
 =head1 FUNCTIONS
 
-=over 
 
-=item function_info(%args)
+
+=head2 function_info(%args)
 
 Arguments:
 
@@ -95,6 +101,10 @@ function name
 =item funcschema (optional, default 'public')
 
 function schema 
+
+=item funcprefix (optiona, default '')
+
+Prefix for the function.  This can be useful for separating functions by class.
 
 =item argtype1 (optional)
 
@@ -135,6 +145,8 @@ sub function_info {
     my ($self) = shift @_;
     my %args = @_;
     $args{funcschema} ||= 'public';
+    $args{funcprefix} ||= '';
+    $args{funcname} = $args{funcprefix}.$args{funcname};
     $args{argschema} ||= 'public';
 
     my $dbh = $args{dbh};
@@ -182,7 +194,7 @@ sub function_info {
     
 }
 
-=item call_procedure(%args)
+=head2 call_procedure(%args)
 
 Arguments:
 
@@ -195,6 +207,10 @@ The function name
 =item funcschema
 
 The schema in which the function resides
+
+=item funcprefix (optiona, default '')
+
+Prefix for the function.  This can be useful for separating functions by class.
 
 =item args
 
@@ -213,6 +229,13 @@ An arrayref of running windowed aggregates.  Each contains two keys, namely 'agg
 These are aggregates, each one has appended 'OVER (ROWS UNBOUNDED PRECEDING)' 
 to it.  
 
+=item registry
+
+This is the name of the registry used for type conversion.  It can be omitted
+and defaults to 'default.'  Note that use of a non-standard registry currently 
+does *not* merge changes from the default registry, so you need to reregister 
+types in non-default registries when you create them.
+
 Please note, these aggregates are not intended to be user-supplied.  Please only
 allow whitelisted values here or construct in a tested framework elsewhere.
 Because of the syntax here, there is no sql injection prevention possible at
@@ -226,6 +249,11 @@ sub call_procedure {
     my ($self) = shift @_;
     my %args = @_;
     $args{funcschema} ||= 'public';
+    $args{funcprefix} ||= '';
+    $args{funcname} = $args{funcprefix}.$args{funcname};
+    $args{registry} ||= 'default';
+
+    my $registry = $typeregistry{$args{registry}};
     my $dbh = $args{dbh};
 
     my $wf_string = '';
@@ -307,12 +335,96 @@ sub call_procedure {
 
     my @rows = ();
     while (my $row = $sth->fetchrow_hashref('NAME_lc')){
+       my @types = @{$sth->{pg_type}};
+       my @names = @{$sth->{NAME_lc}};
+       my $i = 0;
+       for my $type (@types){
+           if (defined $registry->{$type}){
+              my $class = $registry->{$type};
+              $row->{$names[$i]} = $class->from_db($row->{$names[$i]});
+           }
+           ++$i;
+       }
+       
        push @rows, $row;
     }
     return @rows;      
 }
 
-=back
+=head2 new_registry($registry_name)
+
+Creates a new registry if it does not exist.  This is useful when segments of
+an application must override existing type mappings.
+
+Returns 1 on creation, 2 if already exists.
+
+=cut
+
+sub new_registry{
+    my ($self, $registry_name) = @_;
+    return 2 if defined $typeregistry{$registry_name};
+    $typeregistry{$registry_name} = {};
+    return 1;
+}
+
+=head2 register_type(pgtype => $tname, registry => $regname, perl_class => $pm)
+
+Registers a type as a class.  This means that when an attribute of type $pg_type
+is returned, that PGObject will automatically return whatever
+$perl_class->from_db returns.  This allows you to have a db-specific constructor
+for such types.
+
+The registry argument is optional and defaults to 'default'
+
+If the registry does not exist, an error is raised.  if the pg_type is already
+registered to a different type, this returns 0.  Returns 1 on success.
+
+=cut
+
+sub register_type{
+    my $self = shift @_;
+    my %args = @_;
+    $args{registry} ||= 'default';
+    croak "Registry $args{registry} does not exist yet!" 
+              if !defined $typeregistry{$args{registry}};
+    return 0 if defined $typeregistry{$args{registry}}->{$args{pg_type}}
+             and $args{perl_class} 
+             ne $typeregistry{$args{registry}}->{$args{pg_type}};
+            
+    $typeregistry{$args{registry}}->{$args{pg_type}} = $args{perl_class};
+    return 1;
+}
+    
+
+=head2 unregister_type(pgtype => $tname, registry => $regname)
+
+Tries to unregister the type.  If the type does not exist, returns 0, otherwise
+returns 1.  This is mostly useful for when a specific type must make sure it has
+the slot.  This is rarely desirable.  It is usually better to use a subregistry
+instead.
+
+=cut
+
+sub unregister_type{
+    my $self = shift @_;
+    my %args = @_;
+    $args{registry} ||= 'default';
+    croak "Registry $args{registry} does not exist yet!" 
+              if !defined $typeregistry{$args{registry}};
+    return 0 if not defined $typeregistry{$args{registry}}->{$args{pg_type}};
+    delete $typeregistry{$args{registry}}->{$args{pg_type}};
+    return 1;
+}
+
+=head2 $hashref = get_type_registry()
+
+Returns the type registry.  Mostly useful for debugging.
+
+=cut
+
+sub get_type_registry {
+    return \%typeregistry;
+}
 
 =head1 WRITING PGOBJECT-AWARE HELPER CLASSES
 
@@ -335,12 +447,33 @@ returned, it must follow the type format:
   cast  => db cast type
   value => literal representation of type, as intelligible by DBD::Pg
 
-=head2 TODO FOR TYPE INTERFACE
+=head2 REQUIRED INTERFACES
 
-The above interface will only be fully functional when a registration interface
-is provided.  This is planned for 1.1.  A registration interface would allow
-PGObject to create new objects based on database element return type.  Until
-then this must be done on the application level.
+Registered types MUST implement a $class->from_db function accepts the string 
+from the database as its only argument, and returns the object of the desired 
+type.
+
+Any type MAY present an $object->to_db() interface, requiring no arguments, and returning a valid value.  These can be hashrefs as specified above, arrayrefs 
+(converted to PostgreSQL arrays by DBD::Pg) or scalar text values.
+
+=head2 UNDERSTANDING THE REGISTRY SYSTEM
+
+The registry system allows Perl classes to "claim" PostgreSQL types within a 
+certain domain.  For example, if I want to ensure that all numeric types are
+turned into Math::BigFloat objects, I can build a wrapper class with appropriate
+interfaces, but PGObject won't know to convert numeric types to this new class,
+so this is what registration is for.
+
+By default, these mappings are fully global.  Once a class claims a type, unless
+another type goes through the trouble of unregisterign the first type and making
+sure it gets the authoritative spot, all items of that type get turned into the
+appropriate Perl object types.  While this is sufficient for the vast number of
+applications, however, there may be cases where names conflict across schemas or
+the like.  To address this application components may create their own
+registries.  Each registry is fully global, but application components can
+specify non-standard registries when calling procedures, and PGObject will use
+only those components registered on the non-standard registry when checking rows
+before output.
 
 =head1 WRITING TOP-HALF OBJECT FRAMEWORKS FOR PGOBJECT
 
@@ -368,7 +501,28 @@ We do not supply type information, If your top-level module needs this, please
 check out https://code.google.com/p/typeutils/ which could then be used via our
 function mapping APIs here.
 
+=head1 A BRIEF GUIDE TO THE NAMESPACE LAYOUT
 
+Most names underneath PGObject can be assumed to be top-half modules and modules
+under those can be generally assumed to be variants on those.  There are,
+however, a few reserved names:
+
+=over
+
+=item ::Debug is reserved for debugging information.  For example, functions
+which retrieve sources of functions, or grab diagnostics, or the like would go
+here.
+
+=item ::Test is reserved for test framework extensions applible only here
+
+=item ::Type is reserved for PG aware type classes.
+
+For example, one might have PGObject::Type::BigFloat for a Math::Bigfloat
+wrapper, or PGObject::Type::DateTime for a DateTime wrapper.
+
+=item ::Util is reserved for utility functions and classes.
+
+=back
 
 =head1 AUTHOR
 

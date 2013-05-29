@@ -1,5 +1,5 @@
 ---
-abstract: 'Base class for PG Object subclasses'
+abstract: 'A toolkit integrating intelligent PostgreSQL dbs into Perl objects'
 author:
   - 'Chris Travers <chris.travers@gmail.com>'
 build_requires:
@@ -19,4 +19,6 @@ no_index:
     - inc
 requires:
   DBD::Pg: 2
-version: 1.01
+  Test::Exception: 0
+  Test::More: 0
+version: 1.1

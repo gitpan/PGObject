@@ -8,7 +8,7 @@ my $dbh1 = DBI->connect('dbi:Pg:', 'postgres') ;
 
 plan skip_all => 'Needs superuser connection for this test script' unless $dbh1;
 
-plan tests => 32;
+plan tests => 34;
 
 
 $dbh1->do('CREATE DATABASE pgobject_test_db');
@@ -118,13 +118,21 @@ my ($result3) = PGObject->call_procedure(
    dbh           => $dbh,
    running_funcs => [{agg => 'count(*)', alias => 'lines'}]
 );
+my ($result4) = PGObject->call_procedure(
+   funcname   => 'test',
+   funcprefix => 'pg_object_',
+   args       => [1, 'test', '2001-01-01'],
+   dbh        => $dbh,
+);
 
 ok(defined $result1, 'Basic call returned results, default schema');
 ok(defined $result2, 'Basic call returned results, specified schema');
 ok(defined $result3, 'Call returned results, default schema, windowed aggs');
+ok(defined $result4, 'Prefixed call returned results, default schema');
 ok($result1->{pg_object_test}, 'Correct value returned for proc result1');
 ok($result2->{pg_object_test}, 'Correct value returned for proc result2');
 ok($result3->{pg_object_test}, 'Correct value returned for proc result3');
+ok($result4->{pg_object_test}, 'Correct value returned for proc result4');
 is($result3->{lines}, 1, 'Correct running agg returned for proc result3');
 
 $dbh->disconnect;
