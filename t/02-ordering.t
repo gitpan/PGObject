@@ -3,6 +3,7 @@ use DBI;
 use PGObject;
 
 
+plan skip_all => 'Not set up for db tests' unless $ENV{TEST_DB};
 # Initial setup
 my $dbh1 = DBI->connect('dbi:Pg:', 'postgres');
 
