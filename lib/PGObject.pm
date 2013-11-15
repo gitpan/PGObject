@@ -11,11 +11,11 @@ use Carp;
 
 =head1 VERSION
 
-Version 1.1
+Version 1.3
 
 =cut
 
-our $VERSION = '1.2';
+our $VERSION = '1.3';
 
 my %typeregistry = (
     default => {},
@@ -326,6 +326,17 @@ sub call_procedure {
             $sth->bind_param($place, $carg->{value},
                        { pg_type => $carg->{type} });
         } else {
+
+            # This is used to support arrays of db-aware types.  Long-run 
+            # I think we should merge bytea support into this framework. --CT
+            if (ref($carg) eq 'ARRAY'){
+               if (eval{$carg->[0]->can('to_db')}){
+                  for my $ref(@$carg){
+                       $ref = $ref->to_db;
+                  }
+               }
+            }
+
             $sth->bind_param($place, $carg);
         }
         ++$place;
@@ -394,7 +405,23 @@ sub register_type{
     $typeregistry{$args{registry}}->{$args{pg_type}} = $args{perl_class};
     return 1;
 }
-    
+
+=head2 get_registered(registry => $registry, pg_type => $pg_type)
+
+This is a public interface to the registry, which can be useful for composite
+types decoding themselves from tuple data, and so forth.
+
+=cut
+
+sub get_registered {
+    my ($self) = shift @_;
+    my %args = @_;
+    $args{registry} ||= 'default';
+    croak "Registry $args{registry} does not exist yet!"
+              if !defined $typeregistry{$args{registry}};
+    return undef unless defined $typeregistry{$args{registry}}->{$args{pg_type}};
+    return $typeregistry{$args{registry}}->{$args{pg_type}};
+}
 
 =head2 unregister_type(pgtype => $tname, registry => $regname)
 
