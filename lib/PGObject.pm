@@ -11,11 +11,11 @@ use Carp;
 
 =head1 VERSION
 
-Version 1.3
+Version 1.4
 
 =cut
 
-our $VERSION = '1.3';
+our $VERSION = '1.4';
 
 my %typeregistry = (
     default => {},
@@ -350,16 +350,45 @@ sub call_procedure {
        my @names = @{$sth->{NAME_lc}};
        my $i = 0;
        for my $type (@types){
-           if (defined $registry->{$type}){
-              my $class = $registry->{$type};
-              $row->{$names[$i]} = $class->from_db($row->{$names[$i]});
-           }
+           $row->{$names[$i]} 
+                 = process_type($row->{$names[$i]}, $type, $registry);
            ++$i;
        }
        
        push @rows, $row;
     }
     return @rows;      
+}
+
+=head2 process_type($val, $type, $registry)
+
+If $type is registered, returns "$type"->from_db($val).  Otherwise returns
+$val.  If $val is an arrayref, loops through it for every item and strips 
+trialing [] from $type.
+
+This module should generally only be used by type handlers or by this module.
+
+=cut
+
+sub process_type {
+    my ($val, $type, $registry) = @_;
+
+    # Array handling as we'd get this usually from DBD::Pg or equivalent
+    if (ref $val eq ref []){
+       # strangely, DBD::Pg returns, as of 2.x, the types of array types 
+       # as prefixed with an underscore.  So we have to remove this. --CT
+       $type =~ s/^\_//;
+       my $newval = [];
+       push @$newval, process_type($_, $type, $registry) for @$val;
+       return $newval;
+    }
+
+    # Otherwise:
+    if (defined $registry->{$type}){
+       my $class = $registry->{$type};
+       $val = $class->from_db($val);
+    }
+    return $val;
 }
 
 =head2 new_registry($registry_name)
