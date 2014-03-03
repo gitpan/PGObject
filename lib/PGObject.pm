@@ -15,7 +15,7 @@ Version 1.4.1
 
 =cut
 
-our $VERSION = '1.4.1';
+our $VERSION = '1.400.1';
 
 my %typeregistry = (
     default => {},
