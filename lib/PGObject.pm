@@ -11,11 +11,11 @@ use Carp;
 
 =head1 VERSION
 
-Version 1.4
+Version 1.4.1
 
 =cut
 
-our $VERSION = '1.4';
+our $VERSION = '1.4.1';
 
 my %typeregistry = (
     default => {},
@@ -373,6 +373,7 @@ This module should generally only be used by type handlers or by this module.
 sub process_type {
     my ($val, $type, $registry) = @_;
 
+    $registry = $typeregistry{$registry} unless ref $registry;
     # Array handling as we'd get this usually from DBD::Pg or equivalent
     if (ref $val eq ref []){
        # strangely, DBD::Pg returns, as of 2.x, the types of array types 
